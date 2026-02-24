@@ -5,16 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/marlendd/http-rest-api/internal/app/model"
 	"github.com/marlendd/http-rest-api/internal/app/store"
+	"github.com/sirupsen/logrus"
 )
 
 const (
 	sessionName        = "marlend"
 	ctxKeyUser  ctxKey = iota
+	ctxKeyRequestID 
 )
 
 var (
@@ -26,6 +31,7 @@ type ctxKey int8
 
 type server struct {
 	router       *mux.Router
+	logger *logrus.Logger
 	store        store.Store
 	sessionStore sessions.Store
 }
@@ -33,6 +39,7 @@ type server struct {
 func newServer(store store.Store, sessionStore sessions.Store) *server {
 	s := &server{
 		router:       mux.NewRouter(),
+		logger: 	  logrus.New(),
 		store:        store,
 		sessionStore: sessionStore,
 	}
@@ -47,12 +54,44 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) configureRouter() {
+	s.router.Use(s.setRequestID)
+	s.router.Use(s.logRequest)
+	s.router.Use(handlers.CORS(handlers.AllowedOrigins([]string{"*"})))
 	s.router.HandleFunc("/users", s.handleUsersCreate()).Methods("POST")
 	s.router.HandleFunc("/sessions", s.handleSessionsCreate()).Methods("POST")
 
 	private := s.router.PathPrefix("/private").Subrouter()
 	private.Use(s.authenticateUser)
 	private.HandleFunc("/whoami", s.handleWhoami()).Methods("GET")
+}
+
+func (s *server) setRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := uuid.New().String()
+		w.Header().Set("X-Request-ID", id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyRequestID, id)))
+	})
+}
+
+func (s *server) logRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := s.logger.WithFields(logrus.Fields{
+			"remote_addr": r.RemoteAddr,
+			"request_id": r.Context().Value(ctxKeyRequestID),
+		})
+		logger.Infof("started %s %s", r.Method, r.RequestURI)
+
+		start := time.Now()
+		rw := &responseWriter{w, http.StatusOK}
+		next.ServeHTTP(rw, r)
+
+		logger.Infof(
+			"completed with %d %s in %v", 
+			rw.code,
+			http.StatusText(rw.code),
+			time.Since(start),
+		)
+	})
 }
 
 func (s *server) handleUsersCreate() http.HandlerFunc {
