@@ -1,0 +1,20 @@
+.git
+.gitignore
+README.md
+*.md
+.env
+.vscode
+.idea
+
+# Бинарники
+apiserver
+*.exe
+
+# Тесты
+*_test.go
+testdata/
+
+# Временные файлы
+*.log
+*.tmp
+tmp/

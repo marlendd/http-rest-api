@@ -47,6 +47,8 @@ session_key = "your-secret-key-here"
 
 ## Запуск
 
+### Локально (без Docker)
+
 ```bash
 # Собрать
 make build
@@ -56,6 +58,34 @@ make build
 
 # Или напрямую
 go run ./cmd/apiserver -config-path configs/apiserver.toml
+```
+
+### С Docker Compose (рекомендуется)
+
+```bash
+# Запустить все сервисы (PostgreSQL + API)
+docker-compose up -d
+
+# Посмотреть логи
+docker-compose logs -f api
+
+# Остановить
+docker-compose down
+
+# Остановить и удалить данные
+docker-compose down -v
+```
+
+### Только Docker (без compose)
+
+```bash
+# Собрать образ
+docker build -t restapi:latest .
+
+# Запустить контейнер
+docker run -p 8080:8080 \
+  -e DATABASE_URL="host=localhost dbname=restapi_dev sslmode=disable" \
+  restapi:latest
 ```
 
 ## API Endpoints
@@ -116,3 +146,61 @@ go tool cover -html=coverage.out
 - [lib/pq](https://github.com/lib/pq) - PostgreSQL драйвер
 - [ozzo-validation](https://github.com/go-ozzo/ozzo-validation) - Валидация
 - [testify](https://github.com/stretchr/testify) - Тестирование
+
+## Docker
+
+**Быстрый старт:**
+```bash
+docker-compose up -d
+```
+
+Это запустит PostgreSQL, применит миграции и запустит API на порту 8080.
+
+### Основные команды:
+
+```bash
+# Запустить
+make docker-up
+
+# Остановить
+make docker-down
+
+# Логи
+make docker-logs
+
+# Пересобрать после изменений
+make docker-rebuild
+```
+
+### Архитектура:
+
+- **Dockerfile** - многоступенчатая сборка для минимального размера образа
+- **docker-compose.yml** - оркестрация всех сервисов (PostgreSQL, миграции, API)
+- **.dockerignore** - исключение ненужных файлов из образа
+
+### Что происходит при запуске docker-compose:
+
+1. Поднимается PostgreSQL контейнер
+2. Ждет готовности БД (healthcheck)
+3. Запускаются миграции
+4. Стартует API сервер
+
+### Полезные команды:
+
+```bash
+# Подключиться к PostgreSQL
+docker exec -it restapi_postgres psql -U postgres -d restapi_dev
+
+# Зайти внутрь API контейнера
+docker exec -it restapi_api sh
+
+# Посмотреть логи конкретного сервиса
+docker-compose logs -f postgres
+docker-compose logs -f api
+
+# Перезапустить только API
+docker-compose restart api
+
+# Удалить все (включая данные БД)
+docker-compose down -v
+```

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: restapi_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: restapi_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Миграции базы данных
+  migrate:
+    image: migrate/migrate
+    container_name: restapi_migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://postgres:postgres@postgres:5432/restapi_dev?sslmode=disable",
+      "up"
+    ]
+
+  # API сервер
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: restapi_api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs/apiserver.docker.toml:/root/configs/apiserver.toml:ro
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
